@@ -43,9 +43,7 @@
 /*****************************************************************************
  * Global Functions Prototypes
  *****************************************************************************/
-#if MAX_TIMER_OBJECTS
-	extern uint_8 TimerQInitialize(uint_8 ControllerId);
-#endif
+extern uint_8 TimerQInitialize(uint_8 ControllerId);
 extern void TestApp_Init(void);
 extern void TestApp_Task(void);
 #ifdef MCU_MK70F12
@@ -267,34 +265,17 @@ volatile uint_8 kbi_stat;	   /* Status of the Key Pressed */
  * This function initializes the system, enables the interrupts and calls the
  * application
  *****************************************************************************/
-#ifdef __GNUC__
- int main(void)
-#else
- void main(void)
-#endif
+void main(void)
 {
 	/* Initialize the system */
     SYS_Init();
 
-#ifdef SERIAL_DEBUG
-    sci_init();
-#endif
-#ifndef _SERIAL_AGENT_
-    /* Initialize USB module */
-#if HIGH_SPEED_DEVICE
-    USB_Init(ULPI);
-#else
     USB_Init(MAX3353);
-#endif
-#else
-    SIM_SOPT2  |= (SIM_SOPT2_USBSRC_MASK | SIM_SOPT2_PLLFLLSEL_MASK);
-#endif
+
     /* Initialize GPIO pins */
     GPIO_Init();
 
-#if MAX_TIMER_OBJECTS
     (void)TimerQInitialize(0);
-#endif
     
     /* Initialize the USB Test Application */
     TestApp_Init();
@@ -305,10 +286,6 @@ volatile uint_8 kbi_stat;	   /* Status of the Key Pressed */
     	/* Call the application task */
     	TestApp_Task();
     }
-
-#ifdef __GNUC__
-    return 0;
-#endif
 }
 
 /*****************************************************************************
