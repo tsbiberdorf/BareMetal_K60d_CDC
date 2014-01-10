@@ -572,7 +572,6 @@ static void GPIO_Init()
 #endif
 }
 
-#ifndef _SERIAL_AGENT_
 /*****************************************************************************
  *
  *    @name     USB_Init
@@ -586,129 +585,31 @@ static void GPIO_Init()
  ***************************************************************************/
 static void USB_Init(uint_8 controller_ID)
 {
-	if(controller_ID == MAX3353)
-	{
-#ifdef MCU_MK70F12
-		/* MPU is disabled. All accesses from all bus masters are allowed */
-		MPU_CESR=0;
+	SIM_CLKDIV2 &= (uint32_t)(~(SIM_CLKDIV2_USBFRAC_MASK | SIM_CLKDIV2_USBDIV_MASK));
+	/* Configure USBFRAC = 0, USBDIV = 0 => frq(USBout) = 1 / 1 * frq(PLLin) */
+	SIM_CLKDIV2 = SIM_CLKDIV2_USBDIV(0);
 
-		SIM_SOPT2 |= SIM_SOPT2_PLLFLLSEL(1) 	/** PLL0 reference */
-						| SIM_SOPT2_USBFSRC(0)			/** MCGPLLCLK as CLKC source */
-						|  SIM_SOPT2_USBF_CLKSEL_MASK;	/** USB fractional divider like USB reference clock */
-		SIM_CLKDIV2 = USB_FRAC | USB_DIV;		/** Divide reference clock to obtain 48MHz */
-
-		/* Enable USB-OTG IP clocking */
-		SIM_SCGC4 |= SIM_SCGC4_USBFS_MASK;
-#else
-    #ifndef MCU_MKL25Z4
-		SIM_CLKDIV2 &= (uint32_t)(~(SIM_CLKDIV2_USBFRAC_MASK | SIM_CLKDIV2_USBDIV_MASK));
-    #endif /* MCU_MKL25Z4 */
-    #ifdef MCGOUTCLK_72_MHZ
-		/* Configure USBFRAC = 0, USBDIV = 0 => frq(USBout) = 2 / 3 * frq(PLLin) */
-		SIM_CLKDIV2 = SIM_CLKDIV2_USBDIV(2) | SIM_CLKDIV2_USBFRAC_MASK;
-    #else
-        #ifndef MCU_MKL25Z4
-		/* Configure USBFRAC = 0, USBDIV = 0 => frq(USBout) = 1 / 1 * frq(PLLin) */
-		SIM_CLKDIV2 = SIM_CLKDIV2_USBDIV(0);
-        #endif /* MCU_MKL25Z4 */
-    #endif /* MCGOUTCLK_72_MHZ */
-
-		/* 1. Configure USB to be clocked from PLL */
-		SIM_SOPT2 |= SIM_SOPT2_USBSRC_MASK | SIM_SOPT2_PLLFLLSEL_MASK;
+	/* 1. Configure USB to be clocked from PLL */
+	SIM_SOPT2 |= SIM_SOPT2_USBSRC_MASK | SIM_SOPT2_PLLFLLSEL_MASK;
 
 #if PLL_96
-		/* 2. USB freq divider */
-		SIM_CLKDIV2 = 0x02;
+	/* 2. USB freq divider */
+	SIM_CLKDIV2 = 0x02;
 #endif /* PLL_96 */
 
-		/* 3. Enable USB-OTG IP clocking */
-		SIM_SCGC4 |= (SIM_SCGC4_USBOTG_MASK);      
+	/* 3. Enable USB-OTG IP clocking */
+	SIM_SCGC4 |= (SIM_SCGC4_USBOTG_MASK);      
 
-		/* old documentation writes setting this bit is mandatory */
-		USB0_USBTRC0 = 0x40;
-		
-		/* Configure enable USB regulator for device */
-#if(defined MCU_MK20D5)		
-		SIM_SOPT1CFG |= SIM_SOPT1CFG_URWE_MASK; /* Enable SOPT1 to be written */
-#endif		
-		SIM_SOPT1 |= SIM_SOPT1_USBREGEN_MASK;
+	/* old documentation writes setting this bit is mandatory */
+	USB0_USBTRC0 = 0x40;
 
-#endif /* MCU_MK70F12 */
+	/* Configure enable USB regulator for device */
+	SIM_SOPT1 |= SIM_SOPT1_USBREGEN_MASK;
 
-#if defined(MCU_MK20D5)
-		NVICICPR1 = (1 << 3);	/* Clear any pending interrupts on USB */
-		NVICISER1 = (1 << 3);	/* Enable interrupts from USB module */
-#elif (defined MCU_MK21D5)
-        NVICICPR1 = (1 << 21);    /* Clear any pending interrupts on USB */
-        NVICISER1 = (1 << 21);    /* Enable interrupts from USB module */   
-#elif (defined MCU_MKL25Z4)
-        NVIC_ICPR = (1 << 24);	 /* Clear any pending interrupts on USB */
-        NVIC_ISER = (1 << 24);	 /* Enable interrupts from USB module */	
-#else
-		NVICICPR2 = (1 << 9);	/* Clear any pending interrupts on USB */
-		NVICISER2 = (1 << 9);	/* Enable interrupts from USB module */             
-#endif               
+	NVICICPR2 = (1 << 9);	/* Clear any pending interrupts on USB */
+	NVICISER2 = (1 << 9);	/* Enable interrupts from USB module */             
 
-	} // MAX3353
-	else if(controller_ID == ULPI)
-	{
-#ifdef MCU_MK70F12
-		/* disable cache */
-		LMEM_PCCCR &= ~LMEM_PCCCR_ENCACHE_MASK;	
-		/* increase priority for usb module
-		 * AXBS_PRS1: 
-		 * ??=0,M7=7,??=0,M6=0,??=0,M5=5,??=0,M4=4,??=0,M3=3,??=0,M2=2,??=0,M1=1,??=0,M0=6 */
-		AXBS_PRS1 = (uint32_t)0x70543216UL;
-		  
-		/* Disable the MPU so that USB can access RAM */
-		MPU_CESR &= ~MPU_CESR_VLD_MASK;
-		
-		/* clock init */
-		SIM_CLKDIV2 |= USBHS_FRAC | 
-				USBHS_DIV;			/* Divide reference clock to obtain 60MHz */
-		
-		/* MCGPLLCLK for the USB 60MHz CLKC source */ 
-		SIM_SOPT2 |= SIM_SOPT2_USBHSRC(1);
-		
-		/* External 60MHz UPLI Clock */
-		SIM_SOPT2 |= SIM_SOPT2_USBH_CLKSEL_MASK;
-	
-		/* enable USBHS clock */
-		SIM_SCGC6 |= SIM_SCGC6_USB2OTG_MASK;
-		
-		/* use external 60MHz ULPI clock */
-		SIM_SOPT2 |= (SIM_SOPT2_USBH_CLKSEL_MASK);
-		
-		/* select alternate function 2 for ULPI pins */
-		SIM_SCGC5 |= SIM_SCGC5_PORTA_MASK;
-		PORTA_PCR10 = PORT_PCR_MUX(2);  // Data0
-		PORTA_PCR6 = PORT_PCR_MUX(2);	// CLK
-		PORTA_PCR11 = PORT_PCR_MUX(2);  // Data1
-		PORTA_PCR24 = PORT_PCR_MUX(2);	// Data2
-		PORTA_PCR29 = PORT_PCR_MUX(2);	// Data7
-		PORTA_PCR25 = PORT_PCR_MUX(2);	// Data3
-		PORTA_PCR26 = PORT_PCR_MUX(2);	// Data4
-		PORTA_PCR27 = PORT_PCR_MUX(2);	// Data5
-		PORTA_PCR28 = PORT_PCR_MUX(2);	// Data6
-		PORTA_PCR8 = PORT_PCR_MUX(2);	// NXT
-		PORTA_PCR7 = PORT_PCR_MUX(2);	// DIR
-		PORTA_PCR9 = PORT_PCR_MUX(2);	// STP
-	
-		/* reset ULPI module */
-		USBHS_USBCMD |= USBHS_USBCMD_RST_MASK;
-	
-		/* check if USBHS module is ok */
-		USBHS_ULPI_VIEWPORT = 0x40000000;
-		
-		/* wait for ULPI to initialize */
-		while(USBHS_ULPI_VIEWPORT & (0x40000000));
-		
-		NVICICPR3 = 1;	//Clear any pending interrupts on USBHS 
-		NVICISER3 = 1;	//Enable interrupts on USBHS
-#endif /* MCU_MK70F12 */
-	} /* ULPI */
 }
-#endif
 
 /******************************************************************************
  * @name       all_led_off
